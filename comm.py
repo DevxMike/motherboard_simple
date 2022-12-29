@@ -174,12 +174,15 @@ def uni_callback(type, payload):
     
     elif(type == 7 or type == 2):
         states['diag'] = payload
+        requests_unirover.put_nowait({'unirover_request' : ['sensor_data'], 'data' : states})
 
     elif(type == 4):
         states['GPS'] = payload
+        requests_unirover.put_nowait({'unirover_request' : ['sensor_data'], 'data' : states})
     
     elif(type == 3):
         states['IMU'] = payload
+        requests_unirover.put_nowait({'unirover_request' : ['sensor_data'], 'data' : states})
         
     # print(states)
 
@@ -410,10 +413,6 @@ def run_comm():
         if(pipe_to_unirover.poll(0.005)):
             tmp = pipe_to_unirover.recv()
 
-            if('gps_data' in tmp['unirover_request']):
-                pass
-            if('imu_data' in tmp['unirover_request']):
-                pass
-            if('diagnostic_data' in tmp['unirover_request']):
-                pass
+            if('sensor_data' in tmp['unirover_request']):
+                sensor_data = tmp['data']
 run_comm()
