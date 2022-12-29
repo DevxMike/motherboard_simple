@@ -4,7 +4,7 @@ from serial.tools import list_ports
 import time
 import queue
 import time
-import sys
+import multiprocessing
 
 class Packet:
     def __init__(self, message_type: int, message: str) -> None:
@@ -152,14 +152,17 @@ states = {
 communicates_radio = queue.Queue(512)
 communicates_unirover = queue.Queue(512)
 
+requests_radio = queue.Queue(512)
+requests_unirover = queue.Queue(512)
+
+
 def stringify(list_of_ints):
     return ''.join([chr(c) for c in list_of_ints])
 
 def uni_callback(type, payload):
-    global communicates_radio
     global communicates_unirover
+    global requests_unirover
     global states
-    global refresh_gui
     # global com_timeout
     # print(payload)
     if(type == 0):
@@ -179,9 +182,8 @@ def uni_callback(type, payload):
 
 def radio_callback(type, payload):
     global communicates_radio
-    global communicates_unirover
-    global states
-    global refresh_gui
+    global requests_radio
+    global mode
     # global com_timeout
     
     if(type == 0):
@@ -193,9 +195,10 @@ def radio_callback(type, payload):
         communicates_unirover.put_nowait({'type' : 7, 'payload' : ''})
         communicates_radio.put_nowait({'type' : 7, 'payload' : states['diag']})
     elif(type == 8):
-        communicates_unirover.put_nowait({'type' : 8, 'payload' : ''})
-        communicates_radio.put_nowait({'type' : 3, 'payload' : states['IMU']})
-        communicates_radio.put_nowait({'type' : 4, 'payload' : states['GPS']})
+        # communicates_unirover.put_nowait({'type' : 8, 'payload' : ''})
+        # communicates_radio.put_nowait({'type' : 3, 'payload' : states['IMU']})
+        # communicates_radio.put_nowait({'type' : 4, 'payload' : states['GPS']})
+        1
     elif(type == 101):
         print(stringify(payload))
 coords = {
@@ -205,25 +208,15 @@ coords = {
     
 mode = 'man'
 
-def run_comm():
+def radio_process(pipe):
     global communicates_radio
-    global communicates_unirover
+    global requests_radio
     global mode
+    global coords
 
     radio = communication()
-    unirover = communication()
-    
     radio_deserializer = dePacket(radio_callback)
-    uni_deserializer = dePacket(uni_callback, True)
-    
-    while True:
-        tmp = unirover.get_ports()
-        if('UNIRover' in tmp):
-            unirover.get_radio_connection('UNIRover')
-        
-        if(unirover.radio_alive):
-            break
-        
+
     while True:
         tmp = radio.get_ports()
         if('USB2.0-Ser!' in tmp):
@@ -231,38 +224,104 @@ def run_comm():
         
         if(radio.radio_alive):
             break
-    
-    print('Devices connected')
-    
+
+    print('Radio connected')
     while True:
-        read_unirover = []
         read_radio = []
         tmp = radio.read_data_over_radio()
         
         if(tmp != None):
             read_radio.append(tmp)
-            
+        
+        radio_deserializer.deserialize(read_radio)
+
+        if(pipe.poll(0.005)):
+            tmp = pipe.recv()
+
+            if('send_packet' in tmp['main_request']):
+                pass
+
+        if(1):
+            break
+    radio.close_radio_connection()
+
+
+def unirover_process(pipe):
+    global communicates_unirover
+    global requests_unirover
+    global states
+
+    unirover = communication()
+    uni_deserializer = dePacket(uni_callback, True)
+
+    while True:
+        tmp = unirover.get_ports()
+        if('UNIRover' in tmp):
+            unirover.get_radio_connection('UNIRover')
+        
+        if(unirover.radio_alive):
+            break
+
+    print('UNIRover connected')
+    while True:
+        read_unirover = []
         tmp = unirover.read_data_over_radio()
+        
         if(tmp != None):
             read_unirover.append(tmp)
-            
-        radio_deserializer.deserialize(read_radio)
+        
         uni_deserializer.deserialize(read_unirover)
-        
-        if(not communicates_radio.empty()):
-            tmp = communicates_radio.get_nowait()
-            # print(''.join(stringified))
-            radio.send_data_over_radio(''.join(stringify(tmp['payload'])), tmp['type'])
-            #print(tmp['type'])
-        
-        if(not communicates_unirover.empty()):
-            tmp = communicates_unirover.get_nowait()
-            unirover.send_data_over_radio(tmp['payload'], tmp['type'])
-            #print(tmp['type'])
-            
-    radio.close_radio_connection()
-    unirover.close_radio_connection()
-        
 
+        if(pipe.poll(0.005)):
+            tmp = pipe.recv()
+
+            if('get_sensors' in tmp['main_request']):
+                pass
+            if('set_mode' in tmp['main_request']):
+                pass
+            if('set_drive' in tmp['main_request']):
+                pass
+            if('set_cam' in tmp['main_request']):
+                pass 
+
+        if(1):
+            break
+    unirover.close_radio_connection()
+    
+
+    
+
+
+def run_comm():
+
+    pipe_to_radio, radio_to_comm = multiprocessing.Pipe()  
+    pipe_to_unirover, unirover_to_comm = multiprocessing.Pipe()  
+
+    radio_proc = multiprocessing.Process(target=radio_process, name="radio_process", args=tuple(radio_to_comm))
+    unirover_proc = multiprocessing.Process(target=unirover_process, name="UNIRover_process", args=tuple(unirover_to_comm))
+
+    radio_proc.start()
+    unirover_proc.start()
+
+    while True:
+        if(pipe_to_radio.poll(0.005)):
+            tmp = pipe_to_radio.recv()
+            
+            if('get_sensor' in tmp['radio_request']):
+                pass
+            if('drive' in tmp['radio_request']):
+                pass
+            if('coords' in tmp['radio_request']):
+                pass
+            if('cam' in tmp['radio_request']):
+                pass
+            
+        if(pipe_to_unirover.poll(0.005)):
+            tmp = pipe_to_unirover.recv()
+
+            if('sensor_data' in tmp['unirover_request']):
+                pass
+            if('diagnostic_data' in tmp['unirover_request']):
+                pass
 run_comm()
 
