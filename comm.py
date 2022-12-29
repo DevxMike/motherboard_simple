@@ -276,14 +276,24 @@ def unirover_process(pipe):
             tmp = pipe.recv()
 
             if('get_sensors' in tmp['main_request']):
-                pass
+                unirover.send_data_over_radio('', 8)
             if('set_mode' in tmp['main_request']):
-                pass
+                unirover.send_data_over_radio(tmp['mode'], 5)
             if('set_drive' in tmp['main_request']):
-                pass
+                pwm_left = tmp['left']
+                pwm_right = tmp['right']
+                unirover.send_data_over_radio(f'L{pwm_left}', 1)
+                unirover.send_data_over_radio(f'R{pwm_right}', 1)
             if('set_cam' in tmp['main_request']):
-                pass 
-
+                flags = tmp['cam']
+                if(flags & 8):
+                    unirover.send_data_over_radio('DF', 1) # RIGHT
+                if(flags & 4):
+                    unirover.send_data_over_radio('DR', 1) # LEFT
+                if(flags & 2):
+                    unirover.send_data_over_radio('S+', 1) # UP
+                if(flags & 1):
+                    unirover.send_data_over_radio('S-', 1) # DOWN
         if(1):
             break
     unirover.close_radio_connection()
