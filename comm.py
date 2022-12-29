@@ -189,40 +189,31 @@ def uni_callback(type, payload):
 def radio_callback(type, payload):
     global communicates_radio
     global requests_radio
-    global mode
     global coords
-    # global com_timeout
     
     if(type == 0):
         communicates_radio.put_nowait({'type' : 0, 'payload' : ''})
-        # com_timeout = time_ms()
-    
-    # elif(type == 7 or type == 2):
-    #     1
-    #     # states['diag'] = payload
-    #     # communicates_unirover.put_nowait({'type' : 7, 'payload' : ''})
-    #     # communicates_radio.put_nowait({'type' : 7, 'payload' : states['diag']})
-    # elif(type == 8):
-    #     # communicates_unirover.put_nowait({'type' : 8, 'payload' : ''})
-    #     # communicates_radio.put_nowait({'type' : 3, 'payload' : states['IMU']})
-    #     # communicates_radio.put_nowait({'type' : 4, 'payload' : states['GPS']})
-    #     1
+
     elif (type == 100):
         coords = stringify(payload)
-        requests_radio.put_nowait({'radio_request' : ['coords'], 'coords' : coords})
+        requests_radio.put_nowait({
+            'radio_request' : ['coords', 'set_mode'], 
+            'coords' : coords, 
+            'mode' : 'auto'
+        })
+
     elif(type == 101):
         # print(stringify(payload))
         drive = stringify(payload)
-        requests_radio.put_nowait({'radio_request' : ['drive'], 'drive' : drive})
-
-
-    
-mode = 'man'
+        requests_radio.put_nowait({
+            'radio_request' : ['drive', 'set_mode'], 
+            'drive' : drive, 
+            'mode' : 'man'
+        })
 
 def radio_process(pipe):
     global communicates_radio
     global requests_radio
-    global mode
     global coords
 
     radio = communication()
@@ -251,6 +242,9 @@ def radio_process(pipe):
 
             if('send_packet' in tmp['main_request']):
                 radio.send_data_over_radio(tmp['payload'], tmp['type'])
+
+        while(not requests_radio.empty()):
+            pipe.send(requests_radio.get_nowait())
 
     # radio.close_radio_connection()
 
@@ -312,7 +306,9 @@ def unirover_process(pipe):
                     unirover.send_data_over_radio('S+', 1) # UP
                 if(flags & 1):
                     unirover.send_data_over_radio('S-', 1) # DOWN
-
+        
+        while(not requests_unirover.empty()):
+            pipe.send(requests_unirover.get_nowait())
     # unirover.close_radio_connection()
     
 
@@ -325,6 +321,8 @@ sensor_data = {
 
 actual_coords = []
 desired_coords = []
+
+mode = 'man'
 
 def translate_drive(data):
     ctrl = {
@@ -346,6 +344,7 @@ def run_comm():
     global sensor_data
     global actual_coords
     global desired_coords
+    global mode
 
     pipe_to_radio, radio_to_comm = multiprocessing.Pipe()  
     pipe_to_unirover, unirover_to_comm = multiprocessing.Pipe()  
@@ -355,8 +354,6 @@ def run_comm():
 
     radio_proc.start()
     unirover_proc.start()
-
-    
 
     data_timer = time_ms()
     sensor_timer = time_ms()
@@ -409,6 +406,8 @@ def run_comm():
                 })
             if('coords' in tmp['radio_request']):
                 desired_coords = tmp['coords']
+            if('set_mode' in tmp['radio_request']):
+                mode = tmp['mode']
             
         if(pipe_to_unirover.poll(0.005)):
             tmp = pipe_to_unirover.recv()
