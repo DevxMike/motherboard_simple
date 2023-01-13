@@ -156,11 +156,72 @@ communicates_unirover = queue.Queue(512)
 def stringify(list_of_ints):
     return ''.join([chr(c) for c in list_of_ints])
 
+coords = {
+        'longitude' : 0,
+        'latitude' : 0
+    }
+
+desired_coords = {
+        'longitude' : 0,
+        'latitude' : 0
+    }
+
+imu = {
+        'yaw',
+        'pitch',
+        'roll'
+    }
+
+def get_GPS(raw):
+    try:
+        GPS = raw['GPS'].copy()
+        GPS = ''.join([chr(x) for x in GPS])
+        GPS = GPS.split(',')
+
+        coords = {
+        'longitude' : 0,
+        'latitude' : 0
+        }
+
+        coords['latitude'] = float(GPS[1][5:len(GPS[1])])
+        coords['longitude'] = float(GPS[0][4:len(GPS[0])])
+        print(coords)
+
+        return coords
+
+    except:
+        return None
+
+def get_IMU(raw):
+    try:
+        IMU = raw['IMU'].copy()
+        IMU = ''.join([chr(x) for x in IMU])
+        IMU = IMU.split(',')
+
+        imu = {
+            'yaw',
+            'pitch',
+            'roll'
+        }
+
+        imu['yaw'] = float(IMU[0][2:len(IMU[0])])
+        imu['pitch'] = float(IMU[1][2:len(IMU[1])])
+        imu['roll'] = float(IMU[2][2:len(IMU[2])])
+
+        print(imu)
+
+        return imu
+
+    except:
+        return None
+
 def uni_callback(type, payload):
     global communicates_radio
     global communicates_unirover
     global states
-    global refresh_gui
+    global imu
+    global coords
+
     # global com_timeout
     # print(payload)
     if(type == 0):
@@ -172,9 +233,15 @@ def uni_callback(type, payload):
 
     elif(type == 4):
         states['GPS'] = payload
+        tmp = get_GPS(states)
+        if(tmp != None):
+            coords = tmp
 
     elif(type == 3):
         states['IMU'] = payload
+        tmp = get_IMU(states)
+        if(tmp != None):
+            imu = tmp
 
     # print(states)
 mode = 'man'
@@ -184,6 +251,9 @@ def radio_callback(type, payload):
     global communicates_unirover
     global states
     global mode
+    global coords
+    global desired_coords
+    global coords
     # global com_timeout
 
     if(type == 0):
@@ -200,20 +270,17 @@ def radio_callback(type, payload):
         communicates_radio.put_nowait({'type' : 4, 'payload' : states['GPS']})
     elif(type == 100):
         communicates_unirover.put_nowait({'type' : 5, 'payload' : 'A'})
+        tmp = get_GPS({'GPS' : payload})
+        if(tmp != None):
+            desired_coords = tmp
         mode = 'auto'
+        print(f'{desired_coords}, {imu}')
     elif(type == 101):
         mode = 'man'
         p = stringify(payload)
         print(p)
         communicates_unirover.put_nowait({'type' : 5, 'payload' : 'M'})
         communicates_unirover.put_nowait({'type' : 1, 'payload' : p})
-
-coords = {
-        'longitude' : 0,
-        'latitude' : 0
-    }
-
-
 
 def run_comm():
     global communicates_radio
