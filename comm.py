@@ -5,6 +5,7 @@ import time
 import queue
 import time
 import sys
+import pynmea2
 
 class Packet:
     def __init__(self, message_type: int, message: str) -> None:
@@ -183,8 +184,8 @@ def get_GPS(raw):
         'latitude' : 0
         }
 
-        coords['latitude'] = float(GPS[1][5:len(GPS[1])])
-        coords['longitude'] = float(GPS[0][4:len(GPS[0])])
+        coords['latitude'] = float(pynmea2.dm_to_sd(GPS[1][5:len(GPS[1])]))
+        coords['longitude'] = float(pynmea2.dm_to_sd(GPS[0][4:len(GPS[0])]))
         print(coords)
 
         return coords
